@@ -6,3 +6,15 @@
 
 # Software
 ### [Python Library 'imagecodecs' should do all](https://pypi.org/project/imagecodecs/)
+
+
+# QM specific to vasc. biom.
+## full reference
+### SDNR²
+  contrast-to-noise ratio
+## blind
+### Naturalness Image Quality Evaluator (NIQE)
+  used in xray of vasc.
+### wavelet based
+### Natural Scene Statistics (NSS) Models
+  used for MRI(neuro) maybe good for vasc.?
