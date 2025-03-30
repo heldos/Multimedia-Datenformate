@@ -9,6 +9,32 @@ from sewar.full_ref import mse, rmse, uqi, sam, vifp
 import pywt
 from skimage.feature import local_binary_pattern
 from skimage.filters import frangi, hessian
+import imagecodecs
+
+def read_image(image_path):
+    """Universal image reader supporting JXR, JXL, JPEG, JP2 using imagecodecs"""
+    try:
+        # Read raw bytes
+        with open(image_path, 'rb') as f:
+            data = f.read()
+        
+        # Decode based on file extension
+        if image_path.lower().endswith('.jxr'):
+            decoded = imagecodecs.jpegxr_decode(data)
+        elif image_path.lower().endswith('.jxl'):
+            decoded = imagecodecs.jpegxl_decode(data)  # Yes, jxr_decode handles JXL too
+        elif image_path.lower().endswith(('.jp2', '.j2k')):
+            decoded = imagecodecs.jpeg2k_decode(data)
+        else:  # Fallback to OpenCV for standard formats
+            decoded = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_GRAYSCALE)
+            return decoded
+        
+        # Convert to grayscale if needed (imagecodecs may return RGB)
+        if len(decoded.shape) == 3:
+            return cv2.cvtColor(decoded, cv2.COLOR_RGB2GRAY)
+        return decoded
+    except Exception as e:
+        raise ValueError(f"Failed to read {image_path}: {str(e)}")
 
 
 class FingerVeinQualityAnalyzer:
@@ -25,16 +51,17 @@ class FingerVeinQualityAnalyzer:
         self.compressed_paths = compressed_paths
         self.results = []
         
-        # Load images
-        self.original = cv2.imread(original_path, cv2.IMREAD_GRAYSCALE)
+        # Load images USING ONLY read_image() (no cv2.imread!)
+        self.original = read_image(original_path)
         if self.original is None:
             raise ValueError(f"Could not load original image from {original_path}")
             
         self.compressed = {}
         for fmt, path in compressed_paths.items():
-            img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+            img = read_image(path)  # Use read_image() consistently
             if img is None:
                 raise ValueError(f"Could not load {fmt} image from {path}")
+            
             # Resize compressed to match original if needed
             if img.shape != self.original.shape:
                 img = cv2.resize(img, (self.original.shape[1], self.original.shape[0]))
@@ -239,8 +266,8 @@ def main():
     compressed_images = {
         "JPEG": "output/comp.jpg",
         "JPEG2000": "output/comp.jp2",
-        #"JPEGXR": "output/comp.jxr",
-        #"JPEGXL": "output/comp.jxl"
+        "JPEGXR": "output/comp.jxr",
+        "JPEGXL": "output/comp.jxl"
     }
     
     analyzer = FingerVeinQualityAnalyzer(original_image, compressed_images)
