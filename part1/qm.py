@@ -22,7 +22,7 @@ def read_image(image_path):
         if image_path.lower().endswith('.jxr'):
             decoded = imagecodecs.jpegxr_decode(data)
         elif image_path.lower().endswith('.jxl'):
-            decoded = imagecodecs.jpegxl_decode(data)  # Yes, jxr_decode handles JXL too
+            decoded = imagecodecs.jpegxl_decode(data)
         elif image_path.lower().endswith(('.jp2', '.j2k')):
             decoded = imagecodecs.jpeg2k_decode(data)
         else:  # Fallback to OpenCV for standard formats

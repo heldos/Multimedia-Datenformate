@@ -12,7 +12,7 @@ import os
 def adjust_quality_for_size(encoded_data: bytes, target_size: int, encode_function, image, **kwargs):
     """Adjusts quality level to reach target file size."""
     quality = 90  # Start with high quality
-    step = 1  # Step size for quality adjustment
+    step = 0.1  # Step size for quality adjustment
     
     while len(encoded_data) > target_size and quality > 10:
         quality -= step
@@ -35,7 +35,7 @@ def compress_image(input_path: str, output_prefix: str, target_size: int):
         f.write(encoded_jpeg)
     
     # JPEG 2000
-    encoded_jp2 = imagecodecs.jpeg2k_encode(image, level=5)
+    encoded_jp2 = imagecodecs.jpeg2k_encode(image, level=90)
     encoded_jp2 = adjust_quality_for_size(encoded_jp2, target_size, imagecodecs.jpeg2k_encode, image)
     with open(f"{output_prefix}.jp2", "wb") as f:
         f.write(encoded_jp2)
@@ -56,4 +56,4 @@ def compress_image(input_path: str, output_prefix: str, target_size: int):
 
 # Example usage
 if __name__ == "__main__":
-    compress_image("input.png", "output/comp", 2000)  # Target size in bytes
+    compress_image("input.png", "output/comp", 4000)  # Target size in bytes

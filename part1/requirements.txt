@@ -1,0 +1,10 @@
+imageio[v3]
+imagecodecs
+numpy
+opencv-python-headless
+opencv-python
+pandas
+scikit-image
+brisque
+sewar
+pywavelets
