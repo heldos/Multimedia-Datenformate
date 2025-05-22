@@ -1,4 +1,3 @@
-import imageio.v3 as iio
 import imagecodecs
 from imagecodecs import (
     jpeg_encode,
@@ -10,19 +9,20 @@ import numpy as np
 import os
 
 def adjust_quality_for_size(encoded_data: bytes, target_size: int, encode_function, image, **kwargs):
-    """Adjusts quality level to reach target file size."""
-    quality = 90  # Start with high quality
-    step = 0.1  # Step size for quality adjustment
-    
-    while len(encoded_data) > target_size and quality > 10:
-        quality -= step
+    """Adjusts quality level using binary search to reach target file size."""
+    low, high = 10, 90
+    while low <= high:
+        quality = (low + high) // 2
         encoded_data = encode_function(image, level=quality, **kwargs)
-    
+        if len(encoded_data) > target_size:
+            high = quality - 1
+        else:
+            low = quality + 1
     return encoded_data
 
 def compress_image(input_path: str, output_prefix: str, target_size: int):
     # Load the PNG image as a NumPy array
-    image = iio.imread(input_path)
+    image = imagecodecs.imread(input_path)
     
     # Convert to 8-bit if necessary (some formats don't support higher bit depths)
     if image.dtype != np.uint8:
@@ -51,8 +51,6 @@ def compress_image(input_path: str, output_prefix: str, target_size: int):
     encoded_jxl = adjust_quality_for_size(encoded_jxl, target_size, imagecodecs.jpegxl_encode, image)
     with open(f"{output_prefix}.jxl", "wb") as f:
         f.write(encoded_jxl)
-    
-    print("Compression complete!")
 
 # Example usage
 if __name__ == "__main__":

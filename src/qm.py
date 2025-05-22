@@ -260,6 +260,30 @@ class FingerVeinQualityAnalyzer:
         return energy_comp / energy_orig
     
 
+def calc_qm(input_path, compressed_path, output_path, fn):
+    """
+    Calculate quality metrics for a given original and compressed image.
+    
+    Args:
+        original_path (str): Path to the original image.
+        compressed_path (str): Path to the compressed image.
+        output_path (str): Path to save the results.
+    
+    Returns:
+        None
+    """
+    compresed_images = {
+        "JPEG": compressed_path + "/" + fn + ".jpg",
+        "JPEG2000": compressed_path + "/" + fn + ".jp2",
+        "JPEGXR": compressed_path + "/" + fn + ".jxr",
+        "JPEGXL": compressed_path + "/" + fn + ".jxl"
+    }
+    analyzer = FingerVeinQualityAnalyzer(input_path, compresed_images)
+    results_df = analyzer.analyze_all()
+    
+    # Save results to CSV
+    results_df.to_csv(output_path, index=False)
+
 def main():
     # Example usage
     original_image = "input.png"
