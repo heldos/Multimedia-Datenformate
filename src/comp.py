@@ -8,16 +8,16 @@ from imagecodecs import (
 import numpy as np
 import os
 
+
 def adjust_quality_for_size(encoded_data: bytes, target_size: int, encode_function, image, **kwargs):
-    """Adjusts quality level using binary search to reach target file size."""
-    low, high = 10, 90
-    while low <= high:
-        quality = (low + high) // 2
+    """Adjusts quality level to reach target file size."""
+    quality = 99  # Start with high quality
+    step = 0.1  # Step size for quality adjustment
+    
+    while len(encoded_data) > target_size and quality > 1:
+        quality -= step
         encoded_data = encode_function(image, level=quality, **kwargs)
-        if len(encoded_data) > target_size:
-            high = quality - 1
-        else:
-            low = quality + 1
+    
     return encoded_data
 
 def compress_image(input_path: str, output_prefix: str, target_size: int):
