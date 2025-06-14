@@ -4,6 +4,11 @@ from comp import compress_image
 from qm import calc_qm
 from qmanalytics import analyze_quality_metrics
 from recog import vein_recog
+from recoganalytics import calculate_analytics
+from baseline import vein_recog_baseline  # Import the baseline function
+from veinrecogutil import compare_finger_veins
+from veinrecogutilv2fuck import find_vein_matches
+from booob import vein_recognition
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
 def compress_file(input_path, output_path, size):
@@ -51,10 +56,26 @@ def main():
         action="store_true", 
         help="Flag to perform bob vein recognition."
     )
+    parser.add_argument(
+        "--recogbaseline", 
+        action="store_true", 
+        help="Flag to perform baseline vein recognition."
+    )
+    parser.add_argument(
+        "--recoga", 
+        action="store_true", 
+        help="Flag to perform recog analysation."
+    )
     args = parser.parse_args()
 
     input_dir = "input/genuine/"
     output_dir = "output/"
+
+    #img1 = os.path.join(input_dir, "1376-PLUS-FV3-Laser_PALMAR_059_01_09_04.png")
+    #img2 = os.path.join(input_dir, "1377-PLUS-FV3-Laser_PALMAR_059_01_09_05.png")
+
+    #result12 = compare_finger_veins(img1, img2)
+    #print(f"Comparison result between {img1} and {img2}: {result12}")
 
     if args.comp:
         print("Compressing images...")
@@ -113,6 +134,72 @@ def main():
                     os.path.join(output_path, f"{filename.split('.')[0]}.csv"),
                     filename.split(".")[0]
                 )
+    
+    if args.recogbaseline:
+        print("Running baseline recognition on images...")
+        tp = 0
+        fp = 0
+        fn = 0
+        tn = 0
+        count = 0
+        count_genuine = 0
+        count_fake = 0
+        input_files = [
+            filename for filename in os.listdir(input_dir)
+            if filename.endswith(".png")  # Baseline expects .png files
+        ]
+
+        for filename in input_files:
+            count += 1
+            count_genuine = 0
+            count_fake = 0
+            print("-" * 50)
+            print(f"Processing file {count}/{len(input_files)}: {filename}")
+            print(f"True Positives: {tp} | False Positives: {fp}\nFalse Negatives: {fn} | True Negatives: {tn}")
+            print("-" * 50)
+            user_id_1, finger_id_1 = filename.split("_")[3:5]  # Extract user ID and finger ID
+            for filename2 in input_files:
+                if filename == filename2:
+                    continue
+                user_id_2, finger_id_2 = filename2.split("_")[3:5]  # Extract user ID and finger ID
+
+                is_match = user_id_1 == user_id_2 and finger_id_1 == finger_id_2
+                if is_match:
+                    count_genuine += 1
+                else:
+                    if count_fake == count_genuine and not count_genuine >= 20:
+                        continue
+                    if count_genuine >= 20 and count_fake == count_genuine:
+                        break
+                    count_fake += 1
+
+                
+                result = vein_recognition(
+                    os.path.join(input_dir, filename),
+                    os.path.join(input_dir, filename2),
+                    threshold=0.1
+                )
+
+                if result and is_match:
+                    tp += 1
+                elif result and not is_match:
+                    fp += 1
+                elif not result and is_match:
+                    fn += 1
+                elif not result and not is_match:
+                    tn += 1
+
+        print(f"True Positives: {tp} | False Positives: {fp}\nFalse Negatives: {fn} | True Negatives: {tn}")
+    
+    if args.recoga:
+        print("Running recognition analytics on images...")
+        recog_output_dir = os.path.join(output_dir, "recog")
+        recoga_output_dir = os.path.join(output_dir, "recoga")
+        os.makedirs(recoga_output_dir, exist_ok=True)
+        for size in args.ts:
+            input_path = os.path.join(recog_output_dir, f"{size}")
+            output_path = os.path.join(output_dir, f"recoga/{size}.csv")
+            calculate_analytics(input_path, output_path)
                 
 
 if __name__ == "__main__":
