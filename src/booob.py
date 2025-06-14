@@ -10,7 +10,7 @@ import bob.bio.vein.extractor as bve
 import bob.bio.vein.algorithm as bva
 import bob.io.image as bi
 
-def vein_recognition(input_image_path, reference_image_path, threshold=0.15):
+def vein_recognition(input_image_path, reference_image_path):
     """
     Perform finger vein recognition using the Bob library with the repeated-line tracking pipeline.
     
@@ -29,7 +29,7 @@ def vein_recognition(input_image_path, reference_image_path, threshold=0.15):
     rr = bi.to_bob(reference_image)
 
    
-    pp = bvp.Preprocessor(bvp.NoCrop(), bvp.NoMask(), bvp.HuangNormalization(padding_width=5, padding_constant=51), bvp.HistogramEqualization())
+    pp = bvp.Preprocessor(bvp.NoCrop(), bvp.FixedMask(top=0, bottom=0, left=0, right=0), bvp.HuangNormalization(padding_width=100, padding_constant=100), bvp.HistogramEqualization())
     ii = pp(input_image)
     rr = pp(reference_image)
     
@@ -43,9 +43,7 @@ def vein_recognition(input_image_path, reference_image_path, threshold=0.15):
     fir = mm.create_templates(fr, enroll=False)
     score = mm.score(fit, fir)
 
-    #print(f"Score: {score}")
-
-    return score >= threshold
+    return score
 
 if __name__ == "__main__":
     input_image_pathX = "input/genuine/1393-PLUS-FV3-Laser_PALMAR_060_01_07_01.png"

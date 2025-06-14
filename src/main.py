@@ -154,8 +154,9 @@ def main():
             count_genuine = 0
             count_fake = 0
             print("-" * 50)
-            print(f"Processing file {count}/{len(input_files)}: {filename}")
             print(f"True Positives: {tp} | False Positives: {fp}\nFalse Negatives: {fn} | True Negatives: {tn}")
+            print("-" * 50)
+            print(f"Processing file {count}/{len(input_files)}: {filename}")
             print("-" * 50)
             user_id_1, finger_id_1 = filename.split("_")[3:5]  # Extract user ID and finger ID
             for filename2 in input_files:
@@ -173,21 +174,33 @@ def main():
                         break
                     count_fake += 1
 
-                
-                result = vein_recognition(
+                print(f"{count} {count_genuine} {count_fake} | Comparing {user_id_1} - {finger_id_1} with {user_id_2} - {finger_id_2} | Match: {is_match}")
+                score = vein_recognition(
                     os.path.join(input_dir, filename),
                     os.path.join(input_dir, filename2),
-                    threshold=0.1
                 )
+                print(f"Score: {score}")
+
+                threshold = 0.072
+                if score >= threshold:
+                    result = True
+                else:
+                    result = False
 
                 if result and is_match:
                     tp += 1
+                    print("✅")
                 elif result and not is_match:
                     fp += 1
+                    print("❌")
                 elif not result and is_match:
                     fn += 1
+                    print("❌")
                 elif not result and not is_match:
                     tn += 1
+                    print("✅")
+                
+                print("-" * 50)
 
         print(f"True Positives: {tp} | False Positives: {fp}\nFalse Negatives: {fn} | True Negatives: {tn}")
     
