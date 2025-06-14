@@ -1,5 +1,5 @@
 # https://www.youtube.com/watch?v=wOdfNwD9cEA&t=13s
-
+import time
 import cv2
 import numpy as np
 import imageio.v2 as imageio
@@ -34,7 +34,7 @@ def vein_recognition(input_image_path, reference_image_path):
     rr = pp(reference_image)
     
 
-    mc = bve.MaximumCurvature(sigma=3)
+    mc = bve.MaximumCurvature(sigma=2)
     fi = mc(ii)
     fr = mc(rr)
 

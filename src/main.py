@@ -1,4 +1,5 @@
 import os
+import time
 import argparse
 from comp import compress_image
 from qm import calc_qm
@@ -144,6 +145,8 @@ def main():
         count = 0
         count_genuine = 0
         count_fake = 0
+        scores_genuine = []
+        scores_fake = []
         input_files = [
             filename for filename in os.listdir(input_dir)
             if filename.endswith(".png")  # Baseline expects .png files
@@ -153,6 +156,14 @@ def main():
             count += 1
             count_genuine = 0
             count_fake = 0
+            if scores_genuine and scores_fake:
+                print("-" * 50)
+                print(f"min_score_genuine: {min(scores_genuine)} | max_score_genuine: {max(scores_genuine)} | avg_score_genuine: {sum(scores_genuine)/len(scores_genuine) if scores_genuine else 0}")
+                print(f"sorted_scores_genuine: {sorted(scores_genuine)}")
+                print(f"min_score_fake: {min(scores_fake)} | max_score_fake: {max(scores_fake)} | avg_score_fake: {sum(scores_fake)/len(scores_fake) if scores_fake else 0}")
+                print(f"sorted_scores_fake: {sorted(scores_fake)}")
+                best_threshold, min_overlap = find_best_threshold(scores_genuine, scores_fake)
+                print(f"Best threshold: {best_threshold} | Minimal overlap: {min_overlap}")
             print("-" * 50)
             print(f"True Positives: {tp} | False Positives: {fp}\nFalse Negatives: {fn} | True Negatives: {tn}")
             print("-" * 50)
@@ -175,30 +186,39 @@ def main():
                     count_fake += 1
 
                 print(f"{count} {count_genuine} {count_fake} | Comparing {user_id_1} - {finger_id_1} with {user_id_2} - {finger_id_2} | Match: {is_match}")
+                start_time_vein_recog = time.time()
                 score = vein_recognition(
                     os.path.join(input_dir, filename),
                     os.path.join(input_dir, filename2),
                 )
+                score = round(score, 4)
+                
                 print(f"Score: {score}")
 
-                threshold = 0.072
+                threshold = 0.159
                 if score >= threshold:
                     result = True
                 else:
                     result = False
 
+                if is_match:
+                    scores_genuine.append(score)
+                else:
+                    scores_fake.append(score)
+
+                time_txt = f" | in {time.time() - start_time_vein_recog:.2f} seconds"
                 if result and is_match:
                     tp += 1
-                    print("✅")
+                    print(f"✅{time_txt}")
                 elif result and not is_match:
                     fp += 1
-                    print("❌")
+                    print(f"❌{time_txt}")
                 elif not result and is_match:
                     fn += 1
-                    print("❌")
+                    print(f"❌{time_txt}")
                 elif not result and not is_match:
                     tn += 1
-                    print("✅")
+                    print(f"✅{time_txt}")
                 
                 print("-" * 50)
 
@@ -213,6 +233,34 @@ def main():
             input_path = os.path.join(recog_output_dir, f"{size}")
             output_path = os.path.join(output_dir, f"recoga/{size}.csv")
             calculate_analytics(input_path, output_path)
+
+def find_best_threshold(genuine, fake):
+    """
+    Find the threshold that minimizes overlap between two score distributions.
+
+    Args:
+        genuine (list of float): List of scores for genuine samples.
+        fake (list of float): List of scores for fake samples.
+
+    Prints:
+        The best threshold and the minimum overlap at that threshold.
+    """
+    # Combine all scores to search potential thresholds
+    all_scores = sorted(set(genuine + fake))
+
+    min_overlap = float('inf')
+    best_threshold = None
+
+    for threshold in all_scores:
+        false_neg = sum(s < threshold for s in genuine)
+        false_pos = sum(s >= threshold for s in fake)
+        overlap = false_neg + false_pos
+
+        if overlap < min_overlap:
+            min_overlap = overlap
+            best_threshold = threshold
+
+    return best_threshold, min_overlap
                 
 
 if __name__ == "__main__":
