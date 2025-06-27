@@ -12,6 +12,8 @@ from veinrecogutil import compare_finger_veins
 from veinrecogutilv2 import find_vein_matches
 from vein_mine import match_roi
 from booob import vein_recognition, vr_prep_input
+from fvmv3 import FingerVeinMatcher
+import fvmv4
 from performance_metrics import compute_metrics_from_csv
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 
@@ -151,6 +153,7 @@ def main():
             filename for filename in os.listdir(input_dir)
             if filename.endswith(".png")
         ]
+        matcher = FingerVeinMatcher()
 
         for filename in input_files:
             start_time_file = time.time()
@@ -160,49 +163,34 @@ def main():
                 print(f"ID {first_number} already exists in baseline.csv, skipping...")
                 continue
             count += 1
-            count_genuine = 0
-            count_fake = 0
             scores_genuine = []
             scores_fake = []
             user_id_1, finger_id_1 = filename.split("_")[3:5]
-            fi = vr_prep_input(os.path.join(input_dir, filename))
             for filename2 in input_files:
                 if filename == filename2:
                     continue
                 user_id_2, finger_id_2 = filename2.split("_")[3:5]
 
                 is_match = user_id_1 == user_id_2 and finger_id_1 == finger_id_2
-                amount_of_images = 10
-                if is_match:
-                    count_genuine += 1
-                else:
-                    if count_fake == count_genuine and not count_genuine >= amount_of_images:
-                        continue
-                    if count_genuine >= amount_of_images and count_fake == count_genuine:
-                        print(f"Time taken for file {count}: {time.time() - start_time_file:.2f} seconds")
-                        if scores_genuine and scores_fake:
-                            write_scores(first_number, scores_genuine, scores_fake, os.path.join(output_dir, "baseline.csv"))
-                            print("-" * 50)
-                            print(f"min_score_genuine: {min(scores_genuine)} | max_score_genuine: {max(scores_genuine)} | avg_score_genuine: {sum(scores_genuine)/len(scores_genuine) if scores_genuine else 0}")
-                            #print(f"sorted_scores_genuine: {sorted(scores_genuine)}")
-                            print(f"min_score_fake: {min(scores_fake)} | max_score_fake: {max(scores_fake)} | avg_score_fake: {sum(scores_fake)/len(scores_fake) if scores_fake else 0}")
-                            #print(f"sorted_scores_fake: {sorted(scores_fake)}")
-                            best_threshold, min_overlap = find_best_threshold(scores_genuine, scores_fake)
-                            print(f"Best threshold: {best_threshold} | Minimal overlap: {min_overlap}")
-                        break
-                    count_fake += 1
-                #start_time_vein_recog = time.time()
-                fr = vr_prep_input(os.path.join(input_dir, filename2))
-                score = vein_recognition(
-                    fi,
-                    fr,
-                )
-                if is_match:
+                amount_of_images = 20
+                if not is_match and len(scores_fake) == len(scores_genuine) and not len(scores_genuine) >= amount_of_images:
+                    continue
+                if len(scores_fake) == len(scores_genuine) and len(scores_genuine) >= amount_of_images:
+                    print("-" * 50)
+                    print(f"Time taken for file {count}: {time.time() - start_time_file:.2f} seconds")
+                    if scores_genuine and scores_fake:
+                        write_scores(first_number, scores_genuine, scores_fake, os.path.join(output_dir, "baseline.csv"))
+                        print("-" * 50)
+                        print(f"min_score_genuine: {min(scores_genuine)} | max_score_genuine: {max(scores_genuine)} | avg_score_genuine: {sum(scores_genuine)/len(scores_genuine) if scores_genuine else 0}")
+                        print(f"min_score_fake: {min(scores_fake)} | max_score_fake: {max(scores_fake)} | avg_score_fake: {sum(scores_fake)/len(scores_fake) if scores_fake else 0}")
+                        best_threshold, min_overlap = find_best_threshold(scores_genuine, scores_fake)
+                        print(f"Best threshold: {best_threshold} | Minimal overlap: {min_overlap}")
+                    break
+                score = fvmv4.match_finger_veins(os.path.join(input_dir, filename), os.path.join(input_dir, filename2), method='template')
+                if is_match and score > 0.0:
                     scores_genuine.append(score)
-                else:
+                elif not is_match and score > 0.0:
                     scores_fake.append(score)
-                #time_txt = f"{time.time() - start_time_vein_recog:.2f} seconds"
-                #print(time_txt)
 
     if args.performancebaseline:
         compute_metrics_from_csv(os.path.join(output_dir, "baseline.csv"))
