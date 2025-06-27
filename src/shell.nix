@@ -26,3 +26,8 @@ pkgs.mkShell {
     source $VIRTUAL_ENV/bin/activate
   '';
 }
+
+# kein manuell
+# biom metrics like erm
+# vergleich normale (wie ssm) mit biom (erm)
+# learning based comrpresion
