@@ -84,6 +84,7 @@ def find_vein_matches(image1_path, image2_path, threshold=0.75, min_match_count=
                     good_matches.append(m)
 
         # Determine match based on count of good region-aware matches
+        print(f"Number of good matches: {len(good_matches)}")
         return len(good_matches) > min_match_count
 
     except FileNotFoundError as e:
