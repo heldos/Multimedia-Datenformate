@@ -107,7 +107,7 @@ def compress_image(input_path: str,
 if __name__ == "__main__":
     out = compress_image(
         input_path="test.png",
-        output_path="output/compressed.jpg",
+        output_path="output/compressed.png",
         latent_dim=64,
         epochs=50,
         target_size=50_000,
