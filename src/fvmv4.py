@@ -17,6 +17,7 @@ def match_finger_veins(img1_path, img2_path, method='template'):
     Returns:
         float: Similarity score between 0 and 1 (1 = perfect match)
     """
+    print(f"Matching {img1_path} with {img2_path}")
     try:
         # Load and preprocess images
         img1 = load_and_preprocess(img1_path)
