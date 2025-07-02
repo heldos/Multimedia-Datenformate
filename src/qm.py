@@ -10,6 +10,7 @@ import pywt
 from skimage.feature import local_binary_pattern
 from skimage.filters import frangi, hessian
 import imagecodecs
+import traceback
 
 def read_image(image_path):
     """Universal image reader supporting JXR, JXL, JPEG, JP2 using imagecodecs"""
@@ -25,6 +26,8 @@ def read_image(image_path):
             decoded = imagecodecs.jpegxl_decode(data)
         elif image_path.lower().endswith(('.jp2', '.j2k')):
             decoded = imagecodecs.jpeg2k_decode(data)
+        elif image_path.lower().endswith('.png'):
+            decoded = imagecodecs.png_decode(data)
         else:  # Fallback to OpenCV for standard formats
             decoded = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_GRAYSCALE)
             return decoded
@@ -58,14 +61,18 @@ class FingerVeinQualityAnalyzer:
             
         self.compressed = {}
         for fmt, path in compressed_paths.items():
-            img = read_image(path)  # Use read_image() consistently
-            if img is None:
-                raise ValueError(f"Could not load {fmt} image from {path}")
-            
-            # Resize compressed to match original if needed
-            if img.shape != self.original.shape:
-                img = cv2.resize(img, (self.original.shape[1], self.original.shape[0]))
-            self.compressed[fmt] = img
+            try:
+                img = read_image(path)  # Use read_image() consistently
+                if img is None:
+                    raise ValueError(f"Could not load {fmt} image from {path}")
+                
+                # Resize compressed to match original if needed
+                if img.shape != self.original.shape:
+                    img = cv2.resize(img, (self.original.shape[1], self.original.shape[0]))
+                self.compressed[fmt] = img
+            except Exception as e:
+                print(f"Error loading {fmt} image from {path}: {str(e)}")
+                raise
     
     def analyze_all(self):
         """Run all quality analysis metrics"""
@@ -86,6 +93,8 @@ class FingerVeinQualityAnalyzer:
             result.update(self.calculate_vascular_metrics(compressed_img))
             
             self.results.append(result)
+
+            print(self.results)
         
         return pd.DataFrame(self.results)
     
@@ -273,16 +282,20 @@ def calc_qm(input_path, compressed_path, output_path, fn):
         None
     """
     compresed_images = {
-        "JPEG": compressed_path + "/" + fn + ".jpg",
-        "JPEG2000": compressed_path + "/" + fn + ".jp2",
-        "JPEGXR": compressed_path + "/" + fn + ".jxr",
-        "JPEGXL": compressed_path + "/" + fn + ".jxl"
+        "JPEG": os.path.join(compressed_path, fn + "-jpg.png"),
+        "JPEG2000": os.path.join(compressed_path, fn + "-jp2.png"),
+        "JPEGXR": os.path.join(compressed_path, fn + "-jpxr.png"),
+        "JPEGXL": os.path.join(compressed_path, fn + "-jpxl.png")
     }
-    analyzer = FingerVeinQualityAnalyzer(input_path, compresed_images)
-    results_df = analyzer.analyze_all()
     
-    # Save results to CSV
-    results_df.to_csv(output_path, index=False)
+    try:
+        analyzer = FingerVeinQualityAnalyzer(input_path, compresed_images)
+        results_df = analyzer.analyze_all()
+        results_df.to_csv(output_path, index=False)
+    except Exception as e:
+        print(f"Error in calc_qm: {str(e)}")
+        traceback.print_exc()  # This will print the full traceback
+        raise
 
 def main():
     # Example usage
