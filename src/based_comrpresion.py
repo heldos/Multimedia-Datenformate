@@ -1,117 +1,168 @@
+import os
 import numpy as np
+import matplotlib.pyplot as plt
 from PIL import Image
+from io import BytesIO
 import tensorflow as tf
 from tensorflow.keras import layers, Model, Input
-from io import BytesIO
-import os
+
 
 def build_autoencoder(input_shape: tuple, latent_dim: int):
-    # Encoder
-    encoder_input = Input(shape=input_shape, name="encoder_input")
-    x = layers.Conv2D(32, 3, activation='relu', padding='same', name="enc_conv1")(encoder_input)
-    x = layers.MaxPool2D(2, padding='same', name="enc_pool1")(x)
-    x = layers.Conv2D(64, 3, activation='relu', padding='same', name="enc_conv2")(x)
-    x = layers.MaxPool2D(2, padding='same', name="enc_pool2")(x)
-    x = layers.Flatten(name="enc_flatten")(x)
-    code = layers.Dense(latent_dim, activation='relu', name="bottleneck")(x)
+    inp = Input(shape=input_shape)
+    x = layers.Conv2D(32, 3, activation='relu', padding='same')(inp)
+    x = layers.MaxPool2D(2, padding='same')(x)
+    x = layers.Conv2D(64, 3, activation='relu', padding='same')(x)
+    x = layers.MaxPool2D(2, padding='same')(x)
+    x = layers.Flatten()(x)
+    code = layers.Dense(latent_dim, activation='relu')(x)
+    encoder = Model(inp, code, name='encoder')
 
-    encoder = Model(encoder_input, code, name='encoder')
+    dec_inp = Input(shape=(latent_dim,))
+    x = layers.Dense((input_shape[0]//4)*(input_shape[1]//4)*64, activation='relu')(dec_inp)
+    x = layers.Reshape((input_shape[0]//4, input_shape[1]//4, 64))(x)
+    x = layers.UpSampling2D(2)(x)
+    x = layers.Conv2DTranspose(32, 3, activation='relu', padding='same')(x)
+    x = layers.UpSampling2D(2)(x)
+    dec_out = layers.Conv2DTranspose(input_shape[2], 3, activation='sigmoid', padding='same')(x)
+    decoder = Model(dec_inp, dec_out, name='decoder')
 
-    # Decoder-Layer instanziieren (einmalig)
-    d_dense   = layers.Dense((input_shape[0]//4)*(input_shape[1]//4)*64,
-                              activation='relu', name="dec_dense")
-    d_reshape = layers.Reshape((input_shape[0]//4, input_shape[1]//4, 64), name="dec_reshape")
-    d_upsamp1 = layers.UpSampling2D(2, name="dec_upsample1")
-    d_deconv1 = layers.Conv2DTranspose(32, 3, activation='relu', padding='same', name="dec_deconv1")
-    d_upsamp2 = layers.UpSampling2D(2, name="dec_upsample2")
-    d_deconv2 = layers.Conv2DTranspose(input_shape[2], 3, activation='sigmoid', padding='same', name="dec_deconv2")
-
-    # Autoencoder-Graph zusammenführen
-    x_dec = d_dense(code)
-    x_dec = d_reshape(x_dec)
-    x_dec = d_upsamp1(x_dec)
-    x_dec = d_deconv1(x_dec)
-    x_dec = d_upsamp2(x_dec)
-    decoded = d_deconv2(x_dec)
-    autoencoder = Model(encoder_input, decoded, name='autoencoder')
-
-    # Separates Decoder-Model mit den gleichen Layer-Instanzen
-    decoder_input = Input(shape=(latent_dim,), name="decoder_input")
-    y = d_dense(decoder_input)
-    y = d_reshape(y)
-    y = d_upsamp1(y)
-    y = d_deconv1(y)
-    y = d_upsamp2(y)
-    decoder_output = d_deconv2(y)
-    decoder = Model(decoder_input, decoder_output, name='decoder')
-
+    autoencoder = Model(inp, decoder(encoder(inp)), name='autoencoder')
     return autoencoder, encoder, decoder
 
-def compress_image(input_path: str,
-                   output_path: str,
-                   latent_dim: int = 64,
-                   epochs: int = 50,
-                   target_size: int = None,
-                   quality_step: int = 5,
-                   min_quality: int = 20) -> str:
+
+def simple_compress_folder(input_dir: str,
+                           output_dir: str,
+                           quality: int = 50,
+                           max_images: int = None) -> None:
+    os.makedirs(output_dir, exist_ok=True)
+    files = [f for f in os.listdir(input_dir)
+             if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    if max_images is not None:
+        files = files[:max_images]
+
+    for fname in files:
+        src = os.path.join(input_dir, fname)
+        dst = os.path.join(output_dir, os.path.splitext(fname)[0] + '.png')
+        img = Image.open(src).convert('RGB')
+        buf = BytesIO()
+        img.save(buf, format='JPEG', quality=quality)
+        buf.seek(0)
+        comp = Image.open(buf)
+        comp.save(dst, format='PNG')
+        print(f"Compressed {fname} -> {dst} (quality={quality})")
+
+
+def load_images(input_dir: str):
+    files = [f for f in os.listdir(input_dir)
+             if f.lower().endswith('.png')]
+    imgs = []
+    for fname in files:
+        img = Image.open(os.path.join(input_dir, fname)).convert('RGB')
+        arr = np.array(img, dtype=np.float32) / 255.0
+        imgs.append(arr)
+    if not imgs:
+        return np.empty((0,)), []
+    return np.stack(imgs, axis=0), files
+
+
+def train_autoencoder(input_dir: str,
+                      latent_dim: int = 64,
+                      epochs: int = 50,
+                      test_split: float = 0.2):
     """
-    Komprimiere Bild mit Autoencoder und optionaler JPEG-Größenkontrolle.
-    Die Original-Dimensionen bleiben erhalten (vorausgesetzt H, W % 4 == 0).
+    Trainiert den Autoencoder und verwendet einen Teil der Bilder zum Testen.
+    test_split: Anteil der Bilder für das Testset (z.B. 0.2 = 20%).
     """
-    # 1) Bild laden (keine Verzerrung!)
-    img = Image.open(input_path).convert('RGB')
-    width, height = img.size
+    data, files = load_images(input_dir)
+    if data.size == 0:
+        raise RuntimeError("Keine Bilder zum Trainieren gefunden.")
 
-    # 2) Normieren und Batch-Dim hinzufügen
-    arr = np.array(img) / 255.0
-    x = arr[np.newaxis, ...]  # Form (1, H, W, 3)
+    # Aufteilen in Training und Test
+    num = data.shape[0]
+    idx = np.random.permutation(num)
+    split = int(num * (1 - test_split))
+    train_idx, test_idx = idx[:split], idx[split:]
+    x_train, x_test = data[train_idx], data[test_idx]
 
-    # 3) Autoencoder bauen & trainieren
-    autoencoder, encoder, decoder = build_autoencoder((height, width, 3), latent_dim)
-    autoencoder.compile(optimizer='adam', loss='mse')
-    autoencoder.fit(x, x, epochs=epochs, verbose=0)
+    h, w, c = data.shape[1:]
+    ae, encoder, decoder = build_autoencoder((h, w, c), latent_dim)
+    ae.compile(optimizer='adam', loss='mse')
 
-    # 4) Kodieren & Rekonstruieren
-    code = encoder.predict(x)
-    recon = decoder.predict(code)[0]
-
-    # 5) Zurück zu uint8 + PIL
-    recon_img = (recon * 255).clip(0, 255).astype(np.uint8)
-    pil = Image.fromarray(recon_img)
-
-    # 6) Wenn keine Zielgröße, direkt speichern
-    if target_size is None:
-        pil.save(output_path, 'JPEG')
-        return output_path
-
-    # 7) Iterative Qualitäts-Reduktion
-    buf = BytesIO()
-    quality = 95
-    pil.save(buf, 'JPEG', quality=quality)
-    size = buf.tell()
-
-    while size > target_size and quality >= min_quality:
-        buf.seek(0); buf.truncate(0)
-        quality -= quality_step
-        pil.save(buf, 'JPEG', quality=quality)
-        size = buf.tell()
-
-    # 8) Endgültig schreiben
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, 'wb') as f:
-        f.write(buf.getvalue())
-
-    print(f"Final quality={quality}, size={size} bytes")
-    return output_path
-
-if __name__ == "__main__":
-    out = compress_image(
-        input_path="test.png",
-        output_path="output/compressed.png",
-        latent_dim=64,
-        epochs=50,
-        target_size=50_000,
-        quality_step=5,
-        min_quality=20
+    # Training
+    history = ae.fit(
+        x_train, x_train,
+        epochs=epochs,
+        validation_data=(x_test, x_test),
+        verbose=1
     )
-    print("Gespeichert unter:", out)
+    print(f"Trained on {x_train.shape[0]} images, validated on {x_test.shape[0]} images.")
+    return ae, encoder, decoder, history, x_test
+
+
+def compare_original_and_compressed(orig_dir: str,
+                                    comp_dir: str,
+                                    max_examples: int = 5):
+    orig_files = [f for f in os.listdir(orig_dir)
+                  if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+    pairs = []
+    for fn in orig_files:
+        base = os.path.splitext(fn)[0]
+        comp_path = os.path.join(comp_dir, base + '.png')
+        orig_path = os.path.join(orig_dir, fn)
+        if os.path.isfile(comp_path):
+            pairs.append((orig_path, comp_path))
+    pairs = pairs[:max_examples]
+
+    if not pairs:
+        print("Keine Bildpaare zum Vergleichen gefunden.")
+        return
+
+    n = len(pairs)
+    plt.figure(figsize=(6, 3 * n))
+    for i, (orig_path, comp_path) in enumerate(pairs):
+        orig = np.array(Image.open(orig_path).convert('RGB'), dtype=np.float32)
+        comp = np.array(Image.open(comp_path).convert('RGB'), dtype=np.float32)
+        mse = np.mean((orig - comp) ** 2)
+        psnr = 20 * np.log10(255.0) - 10 * np.log10(mse) if mse > 0 else np.inf
+
+        ax1 = plt.subplot(n, 2, 2*i + 1)
+        ax1.imshow(orig.astype(np.uint8))
+        ax1.set_title(f"Original\n{os.path.basename(orig_path)}")
+        ax1.axis('off')
+
+        ax2 = plt.subplot(n, 2, 2*i + 2)
+        ax2.imshow(comp.astype(np.uint8))
+        ax2.set_title(f"Compressed\nPSNR = {psnr:.1f} dB")
+        ax2.axis('off')
+
+    plt.tight_layout()
+    plt.show()
+
+
+if __name__ == '__main__':
+    # Konfiguration
+    src_folder = 'input/genuine'
+    compressed_folder = 'output/compressed'
+    quality = 20
+    max_images = 20      # None = alle Bilder komprimieren
+    latent_dim = 64
+    epochs = 10
+    test_split = 0.2
+
+    # 1) Kompression
+    simple_compress_folder(
+        src_folder,
+        compressed_folder,
+        quality=quality,
+        max_images=max_images
+    )
+
+    # 2) Training mit Test-Split
+    ae, encoder, decoder, history, x_test = train_autoencoder(
+        compressed_folder,
+        latent_dim=latent_dim,
+        epochs=epochs,
+        test_split=test_split
+    )
+
+
